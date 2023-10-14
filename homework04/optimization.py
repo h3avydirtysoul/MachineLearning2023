@@ -2,6 +2,7 @@ import numpy as np
 from numpy.linalg import LinAlgError
 import scipy
 from datetime import datetime
+import time
 from collections import defaultdict
 
 
@@ -75,8 +76,23 @@ class LineSearchTool(object):
         alpha : float or None if failure
             Chosen step size
         """
-        # TODO: Implement line search procedures for Armijo, Wolfe and Constant steps.
-        return None
+
+        phi = lambda alpha: oracle.func(x_k + alpha * d_k)
+        derphi = lambda alpha: oracle.grad(x_k + alpha * d_k).dot(d_k)
+        if self._method == "Wolfe":
+            result_alpha = scipy.optimize.linesearch.scalar_search_wolfe2(phi, derphi, c1=self.c1, c2=self.c2)[0]
+            if result_alpha == None:
+                return LineSearchTool(method='Armijo', c1=self.c1, alpha_0=self.alpha_0).line_search(oracle, x_k, d_k, previous_alpha)
+        elif self._method == "Armijo":
+            if previous_alpha == None:
+                previous_alpha = self.alpha_0
+            alpha = previous_alpha
+            while phi(alpha) > phi(0) + self.c1 * alpha * derphi(0):
+                alpha = alpha / 2
+            result_alpha = alpha
+        else:
+            result_alpha = self.c
+        return result_alpha
 
 
 def get_line_search_tool(line_search_options=None):
@@ -88,6 +104,16 @@ def get_line_search_tool(line_search_options=None):
     else:
         return LineSearchTool()
 
+def update(trace, display, history, oracle, time, x_k, it):
+    if display:
+        print("Iteration ", it, ": x_k = ", x_k, sep = '')
+    if trace:
+        history['time'].append(time)
+        history['func'].append(oracle.func(x_k))
+        history['grad_norm'].append(np.linalg.norm(oracle.grad(x_k)))
+        if len(x_k) <= 2:
+            history['x'].append(np.copy(x_k))
+    return history
 
 def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
                      line_search_options=None, trace=False, display=False):
@@ -141,9 +167,22 @@ def gradient_descent(oracle, x_0, tolerance=1e-5, max_iter=10000,
     history = defaultdict(list) if trace else None
     line_search_tool = get_line_search_tool(line_search_options)
     x_k = np.copy(x_0)
+    it = 0
+    start_time = time.time()
+    history = update(trace, display, history, oracle, 0, x_k, it)
 
-    # TODO: Implement gradient descent
-    # Use line_search_tool.line_search() for adaptive step size.
+    while np.linalg.norm(oracle.grad(x_k)) ** 2 >= tolerance and it <= max_iter:
+        d_k = -oracle.grad(x_k)
+        alpha_k = line_search_tool.line_search(oracle, x_k, d_k)
+        x_k += alpha_k * d_k
+        if (None in x_k) or (x_k > 10**9).any():
+            return x_k, 'computational_error', history
+        it += 1
+        history = update(trace, display, history, oracle, time.time() - start_time, x_k, it)
+        
+        if it > max_iter:
+            return x_k, 'iterations_exceeded', history
+
     return x_k, 'success', history
 
 
@@ -200,7 +239,25 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
     history = defaultdict(list) if trace else None
     line_search_tool = get_line_search_tool(line_search_options)
     x_k = np.copy(x_0)
+    it = 0
+    start_time = time.time()
+    history = update(trace, display, history, oracle, 0, x_k, it)
 
-    # TODO: Implement Newton's method.
-    # Use line_search_tool.line_search() for adaptive step size.
+    while np.linalg.norm(oracle.grad(x_k)) ** 2 >= tolerance and it <= max_iter:        
+        try:
+            c, low = scipy.linalg.cho_factor(oracle.hess(x_k))
+            d_k = scipy.linalg.cho_solve((c, low), -oracle.grad(x_k))
+        except LinAlgError:
+            return x_k, 'newton_direction_error', history
+
+        alpha_k = line_search_tool.line_search(oracle, x_k, d_k)
+        x_k += alpha_k * d_k
+        if (None in x_k) or (x_k > 10**9).any():
+            return x_k, 'computational_error', history
+        it += 1
+        history = update(trace, display, history, oracle, time.time() - start_time, x_k, it)
+
+    if it > max_iter:
+        return x_k, 'iterations_exceeded', history
+
     return x_k, 'success', history

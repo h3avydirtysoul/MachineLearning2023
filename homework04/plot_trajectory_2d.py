@@ -3,7 +3,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-def plot_levels(func, xrange=None, yrange=None, levels=None):
+def plot_levels(func, ax, xrange=None, yrange=None, levels=None):
     """
     Plotting the contour lines of the function.
 
@@ -27,12 +27,12 @@ def plot_levels(func, xrange=None, yrange=None, levels=None):
         for j in range(Z.shape[1]):
             Z[i, j] = func(np.array([X[i, j], Y[i, j]]))
 
-    CS = plt.contour(X, Y, Z, levels=levels, colors='k', linewidth=4.0)
-    plt.clabel(CS, inline=1, fontsize=8) 
-    plt.grid()              
+    CS = ax.contour(X, Y, Z, levels=levels, colors='k')
+    ax.clabel(CS, inline=1, fontsize=8) 
+    ax.grid()              
 
         
-def plot_trajectory(func, history, fit_axis=False, label=None):
+def plot_trajectory(func, history, ax, fit_axis=False, label=None):
     """
     Plotting the trajectory of a method. 
     Use after plot_levels(...).
@@ -45,7 +45,7 @@ def plot_trajectory(func, history, fit_axis=False, label=None):
     >> plot_trajectory(oracle.func, history['x'])
     """
     x_values, y_values = zip(*history)
-    plt.plot(x_values, y_values, '-v', linewidth=5.0, ms=12.0, 
+    ax.plot(x_values, y_values, '-v', 
              alpha=1.0, c='r', label=label)
     
     # Tries to adapt axis-ranges for the trajectory:
@@ -54,6 +54,6 @@ def plot_trajectory(func, history, fit_axis=False, label=None):
         COEF = 1.5
         xrange = [-xmax * COEF, xmax * COEF]
         yrange = [-ymax * COEF, ymax * COEF]
-        plt.xlim(xrange)
-        plt.ylim(yrange)
-
+        ax.xlim(xrange)
+        ax.ylim(yrange)
+        

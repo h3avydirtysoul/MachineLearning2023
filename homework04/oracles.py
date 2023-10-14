@@ -2,7 +2,6 @@ import numpy as np
 import scipy
 from scipy.special import expit
 
-
 class BaseSmoothOracle(object):
     """
     Base class for implementation of oracles.
@@ -37,7 +36,6 @@ class BaseSmoothOracle(object):
         """
         return np.squeeze(self.grad(x + alpha * d).dot(d))
 
-
 class QuadraticOracle(BaseSmoothOracle):
     """
     Oracle for quadratic function:
@@ -58,7 +56,6 @@ class QuadraticOracle(BaseSmoothOracle):
 
     def hess(self, x):
         return self.A 
-
 
 class LogRegL2Oracle(BaseSmoothOracle):
     """
@@ -86,25 +83,29 @@ class LogRegL2Oracle(BaseSmoothOracle):
         self.regcoef = regcoef
 
     def func(self, x):
-        # TODO: Implement
-        return None
+        m = len(self.b)
+        return (np.logaddexp(0, -self.b * self.matvec_Ax(x)).dot(np.ones(m)) / m +
+                self.regcoef / 2 * np.linalg.norm(x) ** 2)
 
     def grad(self, x):
-        # TODO: Implement
-        return None
+        m = len(self.b)
+        sigma = expit(self.b * self.matvec_Ax(x))
+        return self.regcoef * x - self.matvec_ATx((1 - sigma) * self.b) / m
 
     def hess(self, x):
-        # TODO: Implement
-        return None
+        m = len(self.b)
+        n = len(x)
+        sigma = expit(self.b * self.matvec_Ax(x))
+        return self.matmat_ATsA(sigma * (1 - sigma)) / m + self.regcoef * np.eye(n)
 
-
+"""
 class LogRegL2OptimizedOracle(LogRegL2Oracle):
-    """
+
     Oracle for logistic regression with l2 regularization
     with optimized *_directional methods (are used in line_search).
 
     For explanation see LogRegL2Oracle.
-    """
+    
     def __init__(self, matvec_Ax, matvec_ATx, matmat_ATsA, b, regcoef):
         super().__init__(matvec_Ax, matvec_ATx, matmat_ATsA, b, regcoef)
 
@@ -115,29 +116,30 @@ class LogRegL2OptimizedOracle(LogRegL2Oracle):
     def grad_directional(self, x, d, alpha):
         # TODO: Implement optimized version with pre-computation of Ax and Ad
         return None
-
+"""
 
 def create_log_reg_oracle(A, b, regcoef, oracle_type='usual'):
     """
     Auxiliary function for creating logistic regression oracles.
         `oracle_type` must be either 'usual' or 'optimized'
     """
-    matvec_Ax = lambda x: x  # TODO: Implement
-    matvec_ATx = lambda x: x  # TODO: Implement
-
-    def matmat_ATsA(s):
-        # TODO: Implement
-        return None
+    if scipy.sparse.issparse(A):
+        A = scipy.sparse.csr_matrix(A)
+        matvec_Ax = lambda x: A.dot(x)
+        matvec_ATx = lambda x: A.T.dot(x)
+        matmat_ATsA = lambda x: matvec_ATx(matvec_ATx(scipy.sparse.diags(x)).T)
+    else:
+        matvec_Ax = lambda x: np.dot(A, x)
+        matvec_ATx = lambda x: np.dot(A.T, x)
+        matmat_ATsA = lambda s: np.dot(A.T, np.dot(np.diag(s), A))
 
     if oracle_type == 'usual':
         oracle = LogRegL2Oracle
-    elif oracle_type == 'optimized':
-        oracle = LogRegL2OptimizedOracle
+    #elif oracle_type == 'optimized':
+    #    oracle = LogRegL2OptimizedOracle
     else:
         raise 'Unknown oracle_type=%s' % oracle_type
     return oracle(matvec_Ax, matvec_ATx, matmat_ATsA, b, regcoef)
-
-
 
 def grad_finite_diff(func, x, eps=1e-8):
     """
@@ -147,9 +149,12 @@ def grad_finite_diff(func, x, eps=1e-8):
         e_i = (0, 0, ..., 0, 1, 0, ..., 0)
                           >> i <<
     """
-    # TODO: Implement numerical estimation of the gradient
-    return None
-
+    n = len(x)
+    E = np.eye(n)
+    result = np.zeros(n)
+    for i in range(n):
+        result[i] = (func(x + eps * E[i]) - func(x)) / eps
+    return result
 
 def hess_finite_diff(func, x, eps=1e-5):
     """
@@ -162,5 +167,12 @@ def hess_finite_diff(func, x, eps=1e-5):
         e_i = (0, 0, ..., 0, 1, 0, ..., 0)
                           >> i <<
     """
-    # TODO: Implement numerical estimation of the Hessian
-    return None
+    n = len(x)
+    E = np.eye(n)
+    result = np.zeros((n, n))
+    for i in range(n):
+        for j in range(i, n):
+            result[i, j] = (func(x + eps * E[i] + eps * E[j]) - func(x + eps * E[i]) - func(x + eps * E[j])
+                            + func(x)) / eps ** 2
+            result[j, i] = result[i, j]
+    return result
